@@ -24,3 +24,10 @@ function log()
 	esac
 }
 
+#可以通过set -x使用Bash内建调试功能，自定义调试信息可以使用该函数
+#DEBUG statements,控制打印调试信息信息，_DEBUG="on" ./script.sh
+function DEBUG()
+{
+    [ "$_DEBUG"=="on" ] && $@ || :
+}
+
