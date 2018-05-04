@@ -1,7 +1,7 @@
 #!/bin/bash
 
 . log.sh
-#获取连接到PC的设备，devices[],dvices[0]=="devices",其余下标对应设备号，值为设备ID
+#获取连接到PC的设备数量num_devices,以及设备号数组devices[]；注：dvices[0]=="devices",其余下标对应设备号，值为设备ID
 function get_devices()
 {
 	local info_devices=`adb devices | grep -v "List" | cut -f 1`
@@ -35,30 +35,78 @@ function get_image()
 		log red "ERROR:copy error ×"
 		exit 1
 	else
-		log blue "copy success!"
+		log blue "$2 copy success!"
 	fi
 }
 
-#烧写image，需要传入3个参数：设备号，eg. ${devices[1]};image类型（boot,system）;des_path
-function update_image()
+#解析传入的image参数（eg. boot;system），获取images数量以及类型数组。注：images[0]=images，参数的分隔符，下面两个函数分别支持“；”“,”
+function resolve_images_para()
+{
+	if [ -z "$1" ];then
+		log red "[ERROR]:No images passed in"
+		exit 1
+	fi
+	images[0]="images"
+	num_images=0
+	for var in $(seq 20);do
+		local image_type=`echo $1 | cut -d ';' -f $var`
+		if [ -n "$image_type" ];then
+			images[$var]="$image_type"
+		else
+			let var--
+			num_images=$var
+			break
+		fi
+	done
+		
+}
+
+function resolve_images_para2()
+{
+	[ -z "$1" ] && log red "[ERROR]:No images passed in"; exit 1 
+	images[0]="images"
+	num_images=0
+	orig_ifs=$IFS
+	IFS=,
+	for i in $1;do
+		let num_images++
+		images[$num_images]=$i
+	done
+	IFS=$orig_ifs
+}
+#进入fastboot，传入一个参数，DeviceID
+function fastboot_mod()
 {
 	adb -s $1 reboot bootloader
 	if [ $? -ne 0 ];then
 		log red "ERROR:bootloader error ×"
 		exit 1
+	else
+		log blue "device $1 turn to fastboot mod success" 
 	fi
+}
+
+#烧写image，需要传入2个参数：image类型（boot,system）;des_path
+function flash_image()
+{
 	#fastboot erase $2
-	fastboot flash "$2" "$3""$2"'.img'
+	fastboot flash "$1" "$2""$1"'.img'
 	if [ $? -ne 0 ];then
 		log red "ERROR:flash error ×"
 		exit 1
 	fi
+	log blue "$1 image flash finished"
+}
+
+#fastboot reboot，需要传入传入设备ID，用以判断是否已经重启
+function fastboot_reboot()
+{
 	fastboot reboot
 	if [ $? -ne 0 ];then
 		log red "ERROR:reboot error ×"
 		exit 1
 	fi
-	log blue "flash image success,reboot the device..."
+	log blue "reboot the device..."
 	local device_exist=""
 	local timer=`date +%s`
 	while [ ! "$device_exist" ];do
@@ -72,18 +120,6 @@ function update_image()
 		device_exist=`adb devices | grep $1`
 	done
 	log blue "update image success"
+
 }
 
-#开始测试，demo，烧写所有连接PC的车机，暂未进行具体测试内容
-if [ $# -ne 3 ];then
-	log red "ERROR:parameter error"
-	exit 1
-fi
-SOU_PATH="$1"
-IMAGE_TYPE="$2"
-DES_PATH="$3"
-get_image "$SOU_PATH" "$IMAGE_TYPE" "$DES_PATH"
-get_devices
-for var in $(seq $num_devices);do
-	update_image ${devices[$var]} $IMAGE_TYPE $DES_PATH
-done 
